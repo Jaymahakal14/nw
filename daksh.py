@@ -297,3 +297,60 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# Reseller System Start
+
+async def set_reseller(update: Update, context: CallbackContext):
+    """Admin can grant reseller access."""
+    chat_id = update.effective_chat.id
+    args = context.args
+
+    if chat_id not in ADMIN_USER_IDS:
+        await context.bot.send_message(chat_id=chat_id, text="🛑 Only admins can set resellers.")
+        return
+
+    if len(args) != 2 or args[0] not in ["add", "remove"]:
+        await context.bot.send_message(chat_id=chat_id, text="Usage: /reseller <add|remove> <user_id>")
+        return
+
+    command, target_user_id = args
+    target_user_id = int(target_user_id)
+
+    if command == "add":
+        await users_collection.update_one({"user_id": target_user_id}, {"$set": {"reseller": True}}, upsert=True)
+        await context.bot.send_message(chat_id=chat_id, text=f"✅ User {target_user_id} is now a reseller.")
+    elif command == "remove":
+        await users_collection.update_one({"user_id": target_user_id}, {"$set": {"reseller": False}}, upsert=True)
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ User {target_user_id} is no longer a reseller.")
+
+async def add_user(update: Update, context: CallbackContext):
+    """Reseller can add users but not grant reseller access."""
+    chat_id = update.effective_chat.id
+    args = context.args
+
+    user = await users_collection.find_one({"user_id": chat_id})
+    if not user or not user.get("reseller", False):
+        await context.bot.send_message(chat_id=chat_id, text="🛑 Only resellers or admins can add users.")
+        return
+
+    if len(args) != 1:
+        await context.bot.send_message(chat_id=chat_id, text="Usage: /adduser <user_id>")
+        return
+
+    target_user_id = int(args[0])
+    await users_collection.update_one({"user_id": target_user_id}, {"$set": {"coins": 0}}, upsert=True)
+
+    # Send notification to the Telegram group
+    await context.bot.send_message(--1002464533692, text=f"📢 Reseller {chat_id} added a new user: {target_user_id}")
+
+    await context.bot.send_message(chat_id=chat_id, text=f"✅ User {target_user_id} added successfully.")
+
+    # Send reseller notification to the reseller group
+    await context.bot.send_message(chat_id=-4616371010, text=f"📢 Reseller {chat_id} added a new user: {target_user_id}")
+
+
+# Add handlers for reseller system
+application.add_handler(CommandHandler("reseller", set_reseller))
+application.add_handler(CommandHandler("adduser", add_user))
+
+# Reseller System End
