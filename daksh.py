@@ -81,9 +81,6 @@ async def mahakal(update: Update, context: CallbackContext):
         await context.bot.send_message(chat_id=chat_id, text=f"*✅ User {target_user_id} ke {coins} coins kaat diye. Balance: {new_balance}.*", parse_mode='Markdown')
 
 async def attack(update: Update, context: CallbackContext):
-
-    # Attack notification
-    await send_attack_notification(user_id, ip, port, duration, new_balance, context)
     global attack_in_progress, attack_end_time, bot_start_time
 
     chat_id = update.effective_chat.id
@@ -283,25 +280,6 @@ async def broadcast(update: Update, context: CallbackContext):
         text=f"*✅ Broadcast complete! Message sent to {len(user_data)} users.*",
         parse_mode='Markdown'
     )
-
-
-async def send_attack_notification(user_id, ip, port, duration, new_balance, context):
-    """Attack hone par notification Telegram group me bhejta hai"""
-    NOTIFICATION_GROUP_ID = -1002464533692  # Attack notification group
-    
-    attack_message = (
-        f"⚠️ *New Attack Alert!* ⚠️\n\n"
-        f"👤 *User ID:* `{user_id}`\n"
-        f"💣 *Target IP:* `{ip}`\n"
-        f"🔢 *Port:* `{port}`\n"
-        f"⏳ *Duration:* `{duration} seconds`\n"
-        f"💰 *Coins Deducted:* `{COINS_REQUIRED_PER_ATTACK}`\n"
-        f"📉 *Remaining Balance:* `{new_balance}`\n\n"
-        f"🚀 *Attack started successfully!*"
-    )
-
-    await context.bot.send_message(chat_id=NOTIFICATION_GROUP_ID, text=attack_message, parse_mode='Markdown')
-
 
 def main():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
