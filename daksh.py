@@ -9,7 +9,9 @@ attack_in_progress = False
 current_attack = None  # Store details of the current attack
 attack_history = []  # Store attack logs
 
-TELEGRAM_BOT_TOKEN = '7125146756:AAGEc1B72NAKRIGSSBGC6uSkuGpu-O4xx5Y'  # Replace with your bot token
+TELEGRAM_BOT_TOKEN = '7326172590:AAF-m0nnmtHZTh7AncZjDv_vxzFc1uexW6I'  # Replace with your bot token
+ATTACK_LOG_GROUP_ID = -1002464533692  # Attack logs ke liye group ID
+RESELLER_LOG_GROUP_ID = -4616371010  # Reseller logs ke liye group ID
 ADMIN_USER_IDS = [757915155, 5056902784]  # Admin user IDs list
 MONGO_URI = "mongodb+srv://Kamisama:Kamisama@kamisama.m6kon.mongodb.net/"
 DB_NAME = "ninjadaksh"
@@ -283,6 +285,8 @@ async def broadcast(update: Update, context: CallbackContext):
 
 def main():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+ATTACK_LOG_GROUP_ID = -1002464533692  # Attack logs ke liye group ID
+RESELLER_LOG_GROUP_ID = -4616371010  # Reseller logs ke liye group ID
     
     # Adding the /mahakal command handler
     application.add_handler(CommandHandler("start", start))
@@ -292,8 +296,70 @@ def main():
     application.add_handler(CommandHandler("help", help))
     application.add_handler(CommandHandler("uptime", uptime))
     application.add_handler(CommandHandler("broadcast", broadcast))  # Add the /broadcast handler
+    application.add_handler(CommandHandler("addreseller", add_reseller))  # Owner ke liye Reseller add karne ka command
+    application.add_handler(CommandHandler("adduser", add_user_command))  # Reseller ke liye Users add karne ka command
     
     application.run_polling()
 
 if __name__ == '__main__':
     main()
+async def add_reseller(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    args = context.args
+
+    owner = await get_user(chat_id)
+    
+    if owner["role"] != "owner":
+        await context.bot.send_message(chat_id, text="*⛔ Sirf owner hi reseller bana sakta hai!*", parse_mode='Markdown')
+        return
+
+    if len(args) != 2:
+        await context.bot.send_message(chat_id, text="*⚠️ Usage: /addreseller <user_id> <coins>*", parse_mode='Markdown')
+        return
+
+    target_user_id, coins = map(int, args)
+
+    await add_user(target_user_id, coins, role="reseller", owner_id=chat_id)
+    await context.bot.send_message(chat_id, text=f"*✅ Reseller {target_user_id} add ho gaya aur usko {coins} coins diye gaye!*")
+
+    reseller_message = (
+        "*🎖️ [NEW RESELLER ADDED] 🎖️*
+
+"
+        f"*👑 Owner ID:* {chat_id}
+"
+        f"*🔰 Reseller ID:* {target_user_id}
+"
+        f"*💰 Initial Coins:* {coins}
+
+"
+        "*📢 New reseller successfully added!*"
+    )
+    await context.bot.send_message(chat_id=RESELLER_LOG_GROUP_ID, text=reseller_message, parse_mode='Markdown')
+
+async def add_user_command(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    args = context.args
+
+    reseller = await get_user(chat_id)
+
+    if reseller["role"] != "reseller":
+        await context.bot.send_message(chat_id, text="*⛔ Sirf resellers hi users add kar sakte hain!*", parse_mode='Markdown')
+        return
+
+    if reseller["coins"] < 5:
+        await context.bot.send_message(chat_id, text="*❌ Tere paas 5 coins nahi hain user add karne ke liye!*", parse_mode='Markdown')
+        return
+
+    if len(args) != 2:
+        await context.bot.send_message(chat_id, text="*⚠️ Usage: /adduser <user_id> <coins>*", parse_mode='Markdown')
+        return
+
+    target_user_id, coins = map(int, args)
+
+    await add_user(target_user_id, coins, role="user", owner_id=chat_id)
+    new_balance = reseller["coins"] - 5
+    await update_user(chat_id, new_balance)
+
+    await context.bot.send_message(chat_id, text=f"*✅ User {target_user_id} add ho gaya! Tere 5 coins kat liye. New Balance: {new_balance}*")
+
