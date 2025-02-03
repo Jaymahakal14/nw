@@ -9,7 +9,7 @@ attack_in_progress = False
 current_attack = None  # Store details of the current attack
 attack_history = []  # Store attack logs
 
-TELEGRAM_BOT_TOKEN = '7326172590:AAF-m0nnmtHZTh7AncZjDv_vxzFc1uexW6I'  # Replace with your bot token
+TELEGRAM_BOT_TOKEN = '7125146756:AAGEc1B72NAKRIGSSBGC6uSkuGpu-O4xx5Y'  # Replace with your bot token
 ADMIN_USER_IDS = [757915155, 5056902784]  # Admin user IDs list
 MONGO_URI = "mongodb+srv://Kamisama:Kamisama@kamisama.m6kon.mongodb.net/"
 DB_NAME = "ninjadaksh"
@@ -280,25 +280,7 @@ async def broadcast(update: Update, context: CallbackContext):
         text=f"*✅ Broadcast complete! Message sent to {len(user_data)} users.*",
         parse_mode='Markdown'
     )
-
-def main():
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    
-    # Adding the /mahakal command handler
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("mahakal", mahakal))
-    application.add_handler(CommandHandler("attack", attack))
-    application.add_handler(CommandHandler("myinfo", myinfo))
-    application.add_handler(CommandHandler("help", help))
-    application.add_handler(CommandHandler("uptime", uptime))
-    application.add_handler(CommandHandler("broadcast", broadcast))  # Add the /broadcast handler
-    
-    application.run_polling()
-
-if __name__ == '__main__':
-    main()
-
-# Reseller System Start
+# Reseller  System Start
 
 async def set_reseller(update: Update, context: CallbackContext):
     """Admin can grant reseller access."""
@@ -348,9 +330,72 @@ async def add_user(update: Update, context: CallbackContext):
     # Send reseller notification to the reseller group
     await context.bot.send_message(chat_id=-4616371010, text=f"📢 Reseller {chat_id} added a new user: {target_user_id}")
 
+def main():
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Adding the /mahakal command handler
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("mahakal", mahakal))
+    application.add_handler(CommandHandler("attack", attack))
+    application.add_handler(CommandHandler("myinfo", myinfo))
+    application.add_handler(CommandHandler("help", help))
+    application.add_handler(CommandHandler("uptime", uptime))
+    application.add_handler(CommandHandler("broadcast", broadcast))  # Add the /broadcast handler
+    application.add_handler(CommandHandler("reseller", set_reseller))
+    application.add_handler(CommandHandler("adduser", add_user))
 
-# Add handlers for reseller system
-application.add_handler(CommandHandler("reseller", set_reseller))
-application.add_handler(CommandHandler("adduser", add_user))
+    application.run_polling()
 
-# Reseller System End
+if __name__ == '__main__':
+    main()
+
+# Reseller  System Start
+
+async def set_reseller(update: Update, context: CallbackContext):
+    """Admin can grant reseller access."""
+    chat_id = update.effective_chat.id
+    args = context.args
+
+    if chat_id not in ADMIN_USER_IDS:
+        await context.bot.send_message(chat_id=chat_id, text="🛑 Only admins can set resellers.")
+        return
+
+    if len(args) != 2 or args[0] not in ["add", "remove"]:
+        await context.bot.send_message(chat_id=chat_id, text="Usage: /reseller <add|remove> <user_id>")
+        return
+
+    command, target_user_id = args
+    target_user_id = int(target_user_id)
+
+    if command == "add":
+        await users_collection.update_one({"user_id": target_user_id}, {"$set": {"reseller": True}}, upsert=True)
+        await context.bot.send_message(chat_id=chat_id, text=f"✅ User {target_user_id} is now a reseller.")
+    elif command == "remove":
+        await users_collection.update_one({"user_id": target_user_id}, {"$set": {"reseller": False}}, upsert=True)
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ User {target_user_id} is no longer a reseller.")
+
+async def add_user(update: Update, context: CallbackContext):
+    """Reseller can add users but not grant reseller access."""
+    chat_id = update.effective_chat.id
+    args = context.args
+
+    user = await users_collection.find_one({"user_id": chat_id})
+    if not user or not user.get("reseller", False):
+        await context.bot.send_message(chat_id=chat_id, text="🛑 Only resellers or admins can add users.")
+        return
+
+    if len(args) != 1:
+        await context.bot.send_message(chat_id=chat_id, text="Usage: /adduser <user_id>")
+        return
+
+    target_user_id = int(args[0])
+    await users_collection.update_one({"user_id": target_user_id}, {"$set": {"coins": 0}}, upsert=True)
+
+    # Send notification to the Telegram group
+    await context.bot.send_message(--1002464533692, text=f"📢 Reseller {chat_id} added a new user: {target_user_id}")
+
+    await context.bot.send_message(chat_id=chat_id, text=f"✅ User {target_user_id} added successfully.")
+
+    # Send reseller notification to the reseller group
+    await context.bot.send_message(chat_id=-4616371010, text=f"📢 Reseller {chat_id} added a new user: {target_user_id}")
+
