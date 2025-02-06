@@ -289,7 +289,7 @@ def start_attack_reply(message, target, port, time):
 # Dictionary to store the last time each user ran the /attack command
 attack_cooldown = {}
 
-COOLDOWN_TIME =60
+COOLDOWN_TIME =0
 
 def start_attack_reply(message, target, port, attack_time):
     user_info = message.from_user
@@ -352,8 +352,8 @@ def handle_attack(message):
             target = command[1]
             port = int(command[2])  # Convert port to integer
             time = int(command[3])  # Convert time to integer
-            if time > 600:
-                response = "Error: Time interval must be less than 600."
+            if time > 240:
+                response = "Error: Time interval must be less than 240."
             else:
                 record_command_logs(user_id, '/attack', target, port, time)
                 log_command(user_id, target, port, time)
@@ -595,6 +595,17 @@ def add_user_with_days(message):
     else:
         bot.reply_to(message, "❌ You are not a reseller.")
 
+@bot.message_handler(commands=['resellerfile'])
+def send_reseller_file(message):
+    user_id = str(message.chat.id)
+    if user_id in admin_id:  # Only allow admins
+        try:
+            with open(RESELLER_FILE, "rb") as file:
+                bot.send_document(message.chat.id, file)
+        except FileNotFoundError:
+            bot.reply_to(message, "❌ Reseller file not found.")
+    else:
+        bot.reply_to(message, "❌ Only admins can access this file.")
 
 
 #bot.polling()
@@ -604,3 +615,4 @@ while True:
     except Exception as e:
         print(e)
 )
+
