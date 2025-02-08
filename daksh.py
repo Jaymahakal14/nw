@@ -309,7 +309,7 @@ def start_attack_reply(message, target, port, attack_time):
         attack_cooldown[user_info.id] = current_time
 
         # Proceed with starting the attack
-        response = f"{username}, 𝐀𝐓𝐓𝐀𝐂𝐊 𝐒𝐓𝐀𝐑𝐓𝐄𝐃.🔥🔥\n\n𝐓𝐚𝐫𝐠𝐞𝐭: {target}\n𝐏𝐨𝐫𝐭: {port}\n𝐓𝐢𝐦𝐞: {attack_time} 𝐒𝐞𝐜𝐨𝐧𝐝𝐬\n𝐌𝐞𝐭𝐡𝐨𝐝: VIP- User of ATTACK"
+        response = f"🔥 𝐀𝐓𝐓𝐀𝐂𝐊 𝐒𝐓𝐀𝐑𝐓𝐄𝐃.🔥🔥\n\n🎯 Target: {target}\n🔢 Port: {port}\n⏳ Time: {attack_time} Seconds\n🔹 Method: VIP-User of ATTACK"
         bot.reply_to(message, response)
 
         # Send the attack start notification to the channel
